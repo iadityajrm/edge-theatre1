@@ -26,7 +26,7 @@ export class WakeWordService {
         } 
       });
 
-      // Initialize VAD
+      // Initialize VAD first
       await vadService.initialize();
       
       // Set up VAD callbacks
@@ -39,15 +39,17 @@ export class WakeWordService {
         this.processAudioWithVosk(audio);
       });
 
-      // Initialize Vosk
+      // Initialize Vosk (this will fall back to Web Speech API if needed)
       await voskDetector.initialize();
       
       // Set up Vosk callbacks
       voskDetector.setWakeWordCallback(() => {
+        console.log('Wake word callback triggered');
         this.onWakeWordCallback?.();
       });
 
       voskDetector.setCommandCallback((command: string) => {
+        console.log('Command callback triggered:', command);
         this.onCommandCallback?.(command);
       });
 
@@ -65,45 +67,60 @@ export class WakeWordService {
     }
 
     if (!this.isListening) {
-      // Start VAD
-      await vadService.start();
-      
-      // Start Vosk with audio stream
-      if (this.audioStream) {
-        await voskDetector.startListening(this.audioStream);
-      }
+      try {
+        // Start VAD
+        await vadService.start();
+        
+        // Start Vosk with audio stream
+        if (this.audioStream) {
+          await voskDetector.startListening(this.audioStream);
+        }
 
-      this.isListening = true;
-      console.log('Wake word detection started');
+        this.isListening = true;
+        console.log('Wake word detection started');
+      } catch (error) {
+        console.error('Failed to start wake word detection:', error);
+        throw error;
+      }
     }
   }
 
   stop() {
     if (this.isListening) {
-      vadService.pause();
-      voskDetector.stopCommandListening();
-      this.isListening = false;
-      console.log('Wake word detection stopped');
+      try {
+        vadService.pause();
+        voskDetector.stopCommandListening();
+        this.isListening = false;
+        console.log('Wake word detection stopped');
+      } catch (error) {
+        console.error('Error stopping wake word detection:', error);
+      }
     }
   }
 
   destroy() {
     this.stop();
-    vadService.destroy();
     
-    if (this.audioStream) {
-      this.audioStream.getTracks().forEach(track => track.stop());
-      this.audioStream = null;
+    try {
+      vadService.destroy();
+      voskDetector.cleanup();
+      
+      if (this.audioStream) {
+        this.audioStream.getTracks().forEach(track => track.stop());
+        this.audioStream = null;
+      }
+      
+      this.isInitialized = false;
+      console.log('Wake word service destroyed');
+    } catch (error) {
+      console.error('Error destroying wake word service:', error);
     }
-    
-    this.isInitialized = false;
-    console.log('Wake word service destroyed');
   }
 
   private processAudioWithVosk(audio: Float32Array) {
-    // Convert Float32Array to the format expected by Vosk
     // This is called when VAD detects speech
     console.log('Processing audio with Vosk, length:', audio.length);
+    // The actual processing is handled by the Vosk detector's audio processing pipeline
   }
 
   setWakeWordCallback(callback: () => void) {
@@ -115,10 +132,12 @@ export class WakeWordService {
   }
 
   startCommandListening() {
+    console.log('Wake word service starting command listening');
     voskDetector.startCommandListening();
   }
 
   stopCommandListening() {
+    console.log('Wake word service stopping command listening');
     voskDetector.stopCommandListening();
   }
 }
