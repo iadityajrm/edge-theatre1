@@ -1,0 +1,107 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 222 84% 2%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 84% 4%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 84% 4%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 0 100% 45%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 32% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 217 32% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 212 26% 83%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 222 84% 2%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 0 100% 45%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 217 32% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 32% 17%;
+    --sidebar-ring: 212 26% 83%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-tv-darker text-foreground font-sans;
+    overflow: hidden;
+  }
+
+  /* Custom scrollbar for TV interface */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-tv-dark;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+}
+
+@layer components {
+  .tv-card {
+    @apply bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl transition-all duration-300;
+  }
+
+  .tv-card.focused {
+    @apply scale-110 border-primary shadow-xl shadow-primary/40 ring-2 ring-primary/50;
+  }
+
+  .voice-listening {
+    @apply animate-glow-pulse;
+  }
+
+  .hero-gradient {
+    background: linear-gradient(135deg, #e50914 0%, #221f1f 100%);
+  }
+
+  .app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .voice-overlay {
+    @apply fixed bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-8 animate-slide-up;
+  }
+}
