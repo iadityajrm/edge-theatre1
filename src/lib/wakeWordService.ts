@@ -26,23 +26,10 @@ export class WakeWordService {
         } 
       });
 
-      // Initialize VAD first
-      await vadService.initialize();
-      
-      // Set up VAD callbacks
-      vadService.setVoiceStartCallback(() => {
-        console.log('Voice detected by VAD');
-      });
-
-      vadService.setSpeechCallback((audio: Float32Array) => {
-        // Process audio through Vosk when speech is detected
-        this.processAudioWithVosk(audio);
-      });
-
-      // Initialize Vosk (this will fall back to Web Speech API if needed)
+      // Initialize voice recognition (Vosk with Web Speech fallback)
       await voskDetector.initialize();
       
-      // Set up Vosk callbacks
+      // Set up callbacks
       voskDetector.setWakeWordCallback(() => {
         console.log('Wake word callback triggered');
         this.onWakeWordCallback?.();
@@ -52,6 +39,17 @@ export class WakeWordService {
         console.log('Command callback triggered:', command);
         this.onCommandCallback?.(command);
       });
+
+      // Try to initialize VAD as an enhancement (optional)
+      try {
+        await vadService.initialize();
+        vadService.setVoiceStartCallback(() => {
+          console.log('Voice detected by VAD');
+        });
+        console.log('VAD initialized as enhancement');
+      } catch (vadError) {
+        console.log('VAD initialization failed, continuing without it:', vadError);
+      }
 
       this.isInitialized = true;
       console.log('Wake Word Service initialized successfully');
@@ -68,13 +66,16 @@ export class WakeWordService {
 
     if (!this.isListening) {
       try {
-        // Start VAD
-        await vadService.start();
-        
-        // Start Vosk with audio stream
-        if (this.audioStream) {
-          await voskDetector.startListening(this.audioStream);
+        // Start VAD if available
+        try {
+          await vadService.start();
+          console.log('VAD started');
+        } catch (vadError) {
+          console.log('VAD not available, continuing without it');
         }
+        
+        // Start voice recognition
+        await voskDetector.startListening(this.audioStream || undefined);
 
         this.isListening = true;
         console.log('Wake word detection started');
@@ -115,12 +116,6 @@ export class WakeWordService {
     } catch (error) {
       console.error('Error destroying wake word service:', error);
     }
-  }
-
-  private processAudioWithVosk(audio: Float32Array) {
-    // This is called when VAD detects speech
-    console.log('Processing audio with Vosk, length:', audio.length);
-    // The actual processing is handled by the Vosk detector's audio processing pipeline
   }
 
   setWakeWordCallback(callback: () => void) {

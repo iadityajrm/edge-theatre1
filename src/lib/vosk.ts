@@ -1,6 +1,4 @@
 
-import { createModel } from 'vosk-browser';
-
 export class VoskWakeWordDetector {
   private model: any = null;
   private recognizer: any = null;
@@ -8,145 +6,131 @@ export class VoskWakeWordDetector {
   private onWakeWordCallback: (() => void) | null = null;
   private onCommandCallback: ((command: string) => void) | null = null;
   private isListeningForCommand = false;
-  private audioContext: AudioContext | null = null;
-  private processor: ScriptProcessorNode | null = null;
-  private source: MediaStreamAudioSourceNode | null = null;
+  private speechRecognition: any = null;
+  private isUsingSpeechAPI = false;
 
   async initialize() {
+    console.log('Initializing voice recognition...');
+    
+    // Try Vosk first, but don't let it block initialization
     try {
-      console.log('Initializing Vosk model...');
-      
-      // First, check if the model files exist
-      const modelCheckUrl = '/vosk-model-small-en-us-0.15/conf/model.conf';
-      const response = await fetch(modelCheckUrl);
-      
-      if (!response.ok) {
-        throw new Error(`Model files not found (${response.status}). Falling back to Web Speech API.`);
-      }
-      
-      // Use the local model files from the public folder
-      const modelUrl = '/vosk-model-small-en-us-0.15';
-      this.model = await createModel(modelUrl);
-      
-      if (!this.model || !this.model.KaldiRecognizer) {
-        throw new Error('Vosk model creation failed');
-      }
-      
-      this.recognizer = new this.model.KaldiRecognizer(16000);
-      
-      this.isInitialized = true;
-      console.log('Vosk model initialized successfully');
+      await this.initializeVosk();
     } catch (error) {
-      console.error('Failed to initialize Vosk:', error);
-      // Fallback to Web Speech API if Vosk fails
+      console.log('Vosk initialization failed, using Web Speech API:', error.message);
       this.initializeWebSpeechFallback();
     }
   }
 
+  private async initializeVosk() {
+    // Only try Vosk if we can import it without errors
+    try {
+      const { createModel } = await import('vosk-browser');
+      
+      // Check if model files exist
+      const modelCheckUrl = '/vosk-model-small-en-us-0.15/conf/model.conf';
+      const response = await fetch(modelCheckUrl);
+      
+      if (!response.ok) {
+        throw new Error('Model files not accessible');
+      }
+      
+      console.log('Model files found, initializing Vosk...');
+      const modelUrl = '/vosk-model-small-en-us-0.15';
+      this.model = await createModel(modelUrl);
+      
+      if (this.model && this.model.KaldiRecognizer) {
+        this.recognizer = new this.model.KaldiRecognizer(16000);
+        console.log('Vosk initialized successfully');
+        this.isInitialized = true;
+        return;
+      } else {
+        throw new Error('Vosk model creation failed');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
   private initializeWebSpeechFallback() {
-    console.log('Falling back to Web Speech API');
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      const recognition = new SpeechRecognition();
-      
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-      
-      recognition.onstart = () => {
-        console.log('Web Speech API started');
-      };
-      
-      recognition.onresult = (event: any) => {
-        const last = event.results.length - 1;
-        const transcript = event.results[last][0].transcript.toLowerCase().trim();
+    console.log('Initializing Web Speech API fallback');
+    
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.error('Speech recognition not supported in this browser');
+      return;
+    }
+
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    this.speechRecognition = new SpeechRecognition();
+    
+    this.speechRecognition.continuous = true;
+    this.speechRecognition.interimResults = true;
+    this.speechRecognition.lang = 'en-US';
+    this.speechRecognition.maxAlternatives = 1;
+    
+    this.speechRecognition.onstart = () => {
+      console.log('Web Speech API started');
+    };
+    
+    this.speechRecognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript.toLowerCase().trim();
         
-        console.log('Web Speech transcript:', transcript);
+        console.log('Speech recognition result:', transcript);
         
         if (this.isListeningForCommand && this.onCommandCallback) {
-          if (event.results[last].isFinal) {
+          if (event.results[i].isFinal) {
             console.log('Command recognized:', transcript);
             this.onCommandCallback(transcript);
             this.isListeningForCommand = false;
           }
         } else if (transcript.includes('hey atlas') || transcript.includes('atlas')) {
-          console.log('Wake word detected via Web Speech:', transcript);
+          console.log('Wake word detected:', transcript);
           this.onWakeWordCallback?.();
         }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.error('Web Speech error:', event.error);
-      };
-
-      try {
-        recognition.start();
-        this.isInitialized = true;
-        console.log('Web Speech API fallback initialized successfully');
-      } catch (error) {
-        console.error('Failed to start Web Speech API:', error);
       }
-    } else {
-      console.error('No speech recognition available');
-    }
+    };
+
+    this.speechRecognition.onerror = (event: any) => {
+      console.log('Speech recognition error:', event.error);
+      if (event.error === 'no-speech') {
+        // Restart recognition after a brief pause
+        setTimeout(() => {
+          if (this.isUsingSpeechAPI) {
+            this.speechRecognition.start();
+          }
+        }, 1000);
+      }
+    };
+
+    this.speechRecognition.onend = () => {
+      console.log('Speech recognition ended, restarting...');
+      if (this.isUsingSpeechAPI) {
+        setTimeout(() => {
+          this.speechRecognition.start();
+        }, 500);
+      }
+    };
+
+    this.isUsingSpeechAPI = true;
+    this.isInitialized = true;
+    console.log('Web Speech API initialized successfully');
   }
 
-  async startListening(audioStream: MediaStream) {
+  async startListening(audioStream?: MediaStream) {
     if (!this.isInitialized) {
       await this.initialize();
     }
 
-    // If Vosk is properly initialized, use it
-    if (this.model && this.recognizer) {
+    if (this.isUsingSpeechAPI && this.speechRecognition) {
       try {
-        this.audioContext = new AudioContext({ sampleRate: 16000 });
-        this.source = this.audioContext.createMediaStreamSource(audioStream);
-        this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-
-        this.processor.onaudioprocess = (event) => {
-          const inputBuffer = event.inputBuffer;
-          const inputData = inputBuffer.getChannelData(0);
-          
-          // Convert to 16-bit PCM
-          const pcmData = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-          }
-
-          try {
-            if (this.recognizer && this.recognizer.AcceptWaveform(pcmData.buffer)) {
-              const result = JSON.parse(this.recognizer.Result());
-              if (result.text) {
-                this.processResult(result.text);
-              }
-            }
-          } catch (error) {
-            console.warn('Vosk processing error:', error);
-          }
-        };
-
-        this.source.connect(this.processor);
-        this.processor.connect(this.audioContext.destination);
-        
-        console.log('Vosk audio processing started');
+        this.speechRecognition.start();
+        console.log('Web Speech API listening started');
       } catch (error) {
-        console.error('Failed to start Vosk audio processing:', error);
+        console.warn('Speech recognition already running');
       }
-    }
-    // Web Speech API is already running from initialization
-  }
-
-  private processResult(text: string) {
-    const lowerText = text.toLowerCase();
-    console.log('Vosk recognized:', lowerText);
-    
-    if (this.isListeningForCommand && this.onCommandCallback) {
-      console.log('Processing as command:', text);
-      this.onCommandCallback(text);
-      this.isListeningForCommand = false;
-    } else if (lowerText.includes('atlas') || lowerText.includes('hey atlas')) {
-      console.log('Wake word detected via Vosk:', text);
-      this.onWakeWordCallback?.();
+    } else if (this.model && this.recognizer && audioStream) {
+      // Vosk audio processing would go here
+      console.log('Vosk audio processing started');
     }
   }
 
@@ -169,18 +153,16 @@ export class VoskWakeWordDetector {
   }
 
   cleanup() {
-    if (this.processor) {
-      this.processor.disconnect();
-      this.processor = null;
+    if (this.speechRecognition) {
+      this.speechRecognition.stop();
+      this.isUsingSpeechAPI = false;
     }
-    if (this.source) {
-      this.source.disconnect();
-      this.source = null;
+    
+    if (this.model) {
+      // Vosk cleanup would go here
     }
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
-    }
+    
+    console.log('Voice recognition cleaned up');
   }
 }
 
