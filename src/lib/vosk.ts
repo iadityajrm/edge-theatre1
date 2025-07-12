@@ -13,8 +13,8 @@ export class VoskWakeWordDetector {
     try {
       console.log('Initializing Vosk model...');
       
-      // Load a small English model for wake word detection
-      const modelUrl = 'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip';
+      // Use the local model files from the public folder
+      const modelUrl = '/vosk-model-small-en-us-0.15';
       this.model = await createModel(modelUrl);
       this.recognizer = new this.model.KaldiRecognizer(16000);
       
